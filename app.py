@@ -7,6 +7,18 @@ import mediapipe as mp
 import torchvision.transforms as transforms
 import torch.nn as nn
 from torchvision import models
+import joblib
+from tensorflow.keras.models import load_model
+
+def normalize_landmarks(landmarks):
+    # Center to wrist (landmark 0)
+    wrist = landmarks[0]
+    landmarks -= wrist
+    # Scale normalization
+    max_value = np.max(np.abs(landmarks))
+    if max_value > 0:
+        landmarks /= max_value
+    return landmarks.flatten()
 
 # --- MediaPipe Initialization ---
 mp_holistic = mp.solutions.holistic
@@ -16,41 +28,21 @@ app = Flask(__name__)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# --- Multi-modal model definition ---
-class MultiModalNet(nn.Module):
-    def __init__(self, num_classes=24):
-        super().__init__()
-        self.cnn = models.mobilenet_v2(pretrained=False)
-        self.cnn.classifier = nn.Identity()
-        cnn_out_dim = 1280
-        self.landmark_fc = nn.Sequential(
-            nn.Linear(21*3, 128),
-            nn.ReLU(),
-            nn.Linear(128, 64),
-            nn.ReLU()
-        )
-        self.classifier = nn.Sequential(
-            nn.Linear(cnn_out_dim + 64, 256),
-            nn.ReLU(),
-            nn.Linear(256, num_classes)
-        )
-
-    def forward(self, image, landmarks):
-        img_feat = self.cnn(image)
-        lm_feat = self.landmark_fc(landmarks)
-        combined = torch.cat((img_feat, lm_feat), dim=1)
-        out = self.classifier(combined)
-        return out
-
-# --- Load trained multi-modal model ---
-model = MultiModalNet(num_classes=24).to(device)
+# --- Load SVM model ---
 try:
-    model.load_state_dict(torch.load('asl_multimodal_cropped.pth', map_location=device))
-    model.eval()
-    print("Custom multi-modal cropped ASL model loaded successfully.")
+    svm_model = joblib.load('asl_svm_model.pkl')
+    print("SVM model loaded successfully.")
 except Exception as e:
-    print(f"Error loading ASL model: {e}")
-    model = None
+    print(f"Error loading SVM model: {e}")
+    svm_model = None
+
+# --- Load CNN model ---
+try:
+    cnn_model = load_model('asl_cnn_model.h5')
+    print("CNN model loaded successfully.")
+except Exception as e:
+    print(f"Error loading CNN model: {e}")
+    cnn_model = None
 
 # --- Image transform ---
 transform = transforms.Compose([
@@ -74,14 +66,16 @@ def generate_frames():
     """Generator function with multi-modal model inference."""
     global cap, model
 
-    if cap is None or not cap.isOpened() or model is None:
-        print("Webcam or model not available.")
+    if cap is None or not cap.isOpened():
+        print("Webcam not available.")
         return
 
     holistic = mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5)
     transform_img = transform
     frame_count = 0
     last_prediction_text = "No Prediction"
+    transcript = ""
+    no_hand_counter = 0
 
     while True:
         success, frame = cap.read()
@@ -121,28 +115,65 @@ def generate_frames():
             landmark_list = []
             for lm in results.right_hand_landmarks.landmark:
                 landmark_list.extend([lm.x, lm.y, lm.z])
-            landmark_tensor = torch.tensor(landmark_list, dtype=torch.float32).unsqueeze(0).to(device)
+            landmark_array = np.array(landmark_list, dtype=np.float32).reshape(21,3)
+            norm_landmarks = normalize_landmarks(landmark_array)
+            landmark_np = norm_landmarks.reshape(1, -1)
+            landmark_tensor = torch.tensor(norm_landmarks, dtype=torch.float32).unsqueeze(0).to(device)
 
             # Throttle inference
             if frame_count % 5 == 0:
                 try:
-                    pil_image = Image.fromarray(cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGB))
-                    img_tensor = transform_img(pil_image).unsqueeze(0).to(device)
-                    with torch.no_grad():
-                        outputs = model(img_tensor, landmark_tensor)
-                        probs = torch.softmax(outputs, dim=1)
-                        pred_idx = torch.argmax(probs, dim=1).item()
-                        confidence = probs[0, pred_idx].item()
-                    # Map index to letter
-                    alphabet = ['A','B','C','D','E','F','G','H','I','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y']
-                    pred_label = alphabet[pred_idx] if pred_idx < len(alphabet) else "?"
-                    last_prediction_text = f"{pred_label} ({confidence:.2f})"
+                    # Log normalized landmark input
+                    print("Normalized landmark input:", norm_landmarks.tolist())
+
+                    # SVM prediction
+                    svm_probs = svm_model.predict_proba(landmark_np)
+                    svm_pred_idx = np.argmax(svm_probs, axis=1)[0]
+                    svm_conf = np.max(svm_probs)
+                    svm_alphabet = ['A','B','C','D','E','F','G','H','I','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y']
+                    svm_label = svm_alphabet[svm_pred_idx] if svm_pred_idx < len(svm_alphabet) else "?"
+
+                    # CNN prediction
+                    landmark_cnn_input = landmark_np  # shape (1,63)
+                    cnn_probs = cnn_model.predict(landmark_cnn_input, verbose=0)
+                    cnn_pred_idx = np.argmax(cnn_probs, axis=1)[0]
+                    cnn_conf = np.max(cnn_probs)
+                    cnn_label = svm_alphabet[cnn_pred_idx] if cnn_pred_idx < len(svm_alphabet) else "?"
+
+                    # Ensemble: pick model with higher confidence
+                    if svm_label == cnn_label:
+                        final_letter = svm_label
+                    elif svm_conf >= cnn_conf:
+                        final_letter = svm_label
+                    else:
+                        final_letter = cnn_label
+
+                    last_prediction_text = f"SVM: {svm_label} ({svm_conf:.2f}) | CNN: {cnn_label} ({cnn_conf:.2f})"
                 except Exception as e:
                     print(f"Error during prediction: {e}")
                     last_prediction_text = "Error"
         else:
             landmark_tensor = torch.zeros((1, 21*3), dtype=torch.float32).to(device)
+            no_hand_counter += 1
+            if no_hand_counter > 30:
+                transcript = ""
             last_prediction_text = "No hand detected"
+
+        # If hand detected, update transcript
+        if "No hand detected" not in last_prediction_text:
+            no_hand_counter = 0
+            # Extract ensemble letter
+            parts = last_prediction_text.split("|")
+            if len(parts) == 2:
+                svm_letter = parts[0].split(":")[1].strip()
+                cnn_letter = parts[1].split(":")[1].strip()
+                if svm_letter == cnn_letter:
+                    letter = svm_letter
+                else:
+                    letter = svm_letter  # or cnn_letter or majority vote
+                # Append if new letter
+                if len(transcript) == 0 or transcript[-1] != letter:
+                    transcript += letter
 
         # Draw prediction text
         font = cv2.FONT_HERSHEY_SIMPLEX
@@ -155,6 +186,13 @@ def generate_frames():
                       (org[0] + text_width + 10, org[1] + baseline + 10),
                       (0, 0, 0), cv2.FILLED)
         cv2.putText(frame, last_prediction_text, org, font, font_scale, color, thickness, cv2.LINE_AA)
+
+        # Draw transcript on right
+        x_offset = frame.shape[1] - 300
+        y_offset = 50
+        cv2.rectangle(frame, (x_offset - 10, y_offset - 40), (frame.shape[1] - 10, y_offset + 40), (0,0,0), -1)
+        cv2.putText(frame, "Transcript:", (x_offset, y_offset), font, 0.8, (255,255,255), 2)
+        cv2.putText(frame, transcript, (x_offset, y_offset + 30), font, 0.8, (255,255,255), 2)
 
         ret, buffer = cv2.imencode('.jpg', frame)
         if not ret:
