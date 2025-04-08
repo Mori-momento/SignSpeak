@@ -1,0 +1,104 @@
+# Product Requirements Document: Real-time Sign Language Recognition System
+
+**Version:** 1.0
+**Date:** 2023-10-27
+**Author:** AI Assistant (Based on User Request)
+
+## 1. Introduction
+
+This document outlines the requirements for a web-based application designed to recognize a predefined set of signs from a specific sign language (e.g., American Sign Language - ASL) in real-time using a user's webcam feed. The application will leverage computer vision and machine learning techniques to process the video stream, predict the sign being performed, and display the corresponding text prediction to the user. The primary goal is to create a functional proof-of-concept demonstrating real-time sign recognition capabilities via a simple web interface powered by Flask.
+
+## 2. Goals and Objectives
+
+*   **Primary Goal:** Develop a system capable of recognizing a limited, predefined set of isolated signs from a live video feed with reasonable accuracy.
+*   **Objective 1:** Capture and process live video from a user's webcam.
+*   **Objective 2:** Utilize a pre-trained machine learning model (sequence-based, e.g., LSTM, GRU, Transformer) to classify sign language gestures from extracted features (e.g., hand/pose keypoints via MediaPipe).
+*   **Objective 3:** Display the predicted sign as text overlaid on the video feed or in a designated area on the web page in near real-time.
+*   **Objective 4:** Provide clear instructions on how to train the recognition model, including dataset suggestions and preprocessing steps.
+*   **Objective 5:** Package the application using the Flask web framework for easy local deployment and demonstration.
+*   **Objective 6:** Serve as an educational tool and foundation for further development in assistive communication technology.
+
+## 3. Target Audience
+
+*   **Primary Users:** Individuals learning sign language, developers exploring computer vision/ML applications, educators demonstrating AI concepts.
+*   **Secondary Users:** Researchers in accessibility tech, potentially individuals seeking basic communication assistance (within the limitations of the recognized sign set).
+
+## 4. Functional Requirements
+
+| ID  | Requirement Description                                                                 | Priority | Notes                                                                                                                               |
+| :-- | :-------------------------------------------------------------------------------------- | :------- | :---------------------------------------------------------------------------------------------------------------------------------- |
+| FR1 | **Live Video Input:** Access and display the user's webcam feed via the web browser.      | Must     | Requires user permission for webcam access.                                                                                         |
+| FR2 | **Sign Detection & Tracking:** Detect and track relevant body parts (primarily hands, potentially pose/face) within the video frames. | Must     | MediaPipe Holistic or Hands is the recommended solution.                                                                              |
+| FR3 | **Feature Extraction:** Extract numerical features (e.g., normalized keypoint coordinates) from the detected body parts for each frame. | Must     | The extracted features must match the format expected by the trained model.                                                           |
+| FR4 | **Sequence Buffering:** Collect sequences of extracted features over a defined time window (number of frames). | Must     | The sequence length must match the input requirement of the trained model. Use techniques like a deque.                                |
+| FR5 | **Sign Prediction:** Feed the buffered feature sequence into the loaded machine learning model to get a sign prediction. | Must     | The system must load a pre-trained model file.                                                                                      |
+| FR6 | **Prediction Filtering:** Apply a confidence threshold to the model's output to filter out low-confidence predictions. | Should   | Prevents displaying random guesses when no clear sign is detected. Threshold should be configurable.                                |
+| FR7 | **Prediction Display:** Display the name of the recognized sign (based on the prediction index and label mapping) on the web interface. | Must     | Display should be clearly visible, potentially overlaid on the video or in a dedicated text area. Include confidence score (optional). |
+| FR8 | **Web Interface:** Provide a simple HTML frontend served by Flask to display the video feed and predictions. | Must     | Basic structure with video element and potentially a text display area.                                                             |
+| FR9 | **Model Loading:** Load the pre-trained sign recognition model and associated label mapping upon application start. | Must     | Paths to model and mapping files should be configurable or clearly defined.                                                         |
+| FR10| **Clear Training Documentation:** Provide separate, detailed instructions on dataset selection, preprocessing, model architecture (example), training procedure, and saving the model/mapping. | Must     | Essential for enabling others to train the model for their specific needs or chosen signs. (As provided in the initial prompt).      |
+
+## 5. Non-Functional Requirements
+
+| ID   | Requirement Description                                                                 | Priority | Notes & Metrics (Examples)                                                                                                 |
+| :--- | :-------------------------------------------------------------------------------------- | :------- | :------------------------------------------------------------------------------------------------------------------------- |
+| NFR1 | **Performance:** Process video and display predictions in near real-time.                 | Must     | Latency from sign completion to prediction display should ideally be < 1 second. Target frame processing rate > 10-15 FPS on moderate hardware. |
+| NFR2 | **Accuracy:** Achieve a defined level of accuracy for the *trained* set of signs.         | High     | Target > 70-80% accuracy on a held-out test set *for the specific signs the model was trained on*. Accuracy is dataset-dependent. |
+| NFR3 | **Usability:** The application should be simple to start and use with minimal setup.       | High     | Clear instructions to run, intuitive interface (webcam view + prediction).                                                     |
+| NFR4 | **Reliability:** The application should run stable without frequent crashes during normal use. | Should   | Handle potential errors gracefully (e.g., webcam not found, model load failure).                                            |
+| NFR5 | **Maintainability:** Code should be well-structured, commented, and follow Python best practices. | Should   | Facilitates understanding and future modifications. Use of functions, clear variable names.                                     |
+| NFR6 | **Compatibility:** Primarily target modern web browsers (Chrome, Firefox) that support WebRTC/`getUserMedia`. | Must     | OS compatibility depends on Python/library support (Windows, macOS, Linux).                                                 |
+| NFR7 | **Security:** Basic security considerations for a local web application.                  | Must     | User must explicitly grant webcam permission. No sensitive data stored beyond the model/mapping files. Avoid security pitfalls like using `debug=True` in production. |
+
+## 6. Data Requirements
+
+*   **DR1: Training Dataset:** Requires access to or creation of a dataset of sign language videos.
+    *   Must contain multiple examples of each sign to be recognized.
+    *   Should ideally feature diverse signers, lighting conditions, and backgrounds.
+    *   Dataset format needs to be processable (e.g., video files like MP4, AVI).
+    *   Recommended starting point: WLASL, or a custom dataset for a small number of signs.
+*   **DR2: Preprocessed Data:** The training pipeline must generate sequences of numerical features (e.g., keypoints) and corresponding labels.
+*   **DR3: Trained Model File:** A saved file containing the trained model architecture and weights (e.g., `.h5` for Keras, `.pth` for PyTorch, or TensorFlow SavedModel format).
+*   **DR4: Label Mapping File:** A file (e.g., `.pkl`, `.json`) mapping the model's output indices (0, 1, 2...) to human-readable sign names ("hello", "thanks", ...).
+
+## 7. Technical Requirements
+
+*   **TR1: Backend:** Python (3.7+ recommended), Flask.
+*   **TR2: Core Libraries:** OpenCV (`opencv-python-headless` or `opencv-python`), TensorFlow/Keras *or* PyTorch, MediaPipe, NumPy.
+*   **TR3: Frontend:** HTML5, CSS (basic), JavaScript (minimal, primarily for browser APIs if needed beyond simple image display).
+*   **TR4: Environment:** Standard Python environment management (e.g., `venv`). Access to a functional webcam.
+
+## 8. User Interface (UI) / User Experience (UX) Requirements
+
+*   **UI1:** A single web page displaying the application.
+*   **UI2:** A prominent video element showing the live webcam feed.
+*   **UI3:** Real-time overlay of detected landmarks (MediaPipe visualization) on the video feed for user feedback.
+*   **UI4:** Clear display of the predicted sign text, updated in near real-time. This text should be easily readable against the video background (e.g., using a solid background color rectangle or placing it in a separate static area).
+*   **UX1:** The application should start processing automatically once the page is loaded and webcam permission is granted.
+*   **UX2:** Minimal user interaction required beyond granting permissions and performing signs.
+
+## 9. Future Considerations / Out of Scope (for V1.0)
+
+*   Recognition of a large vocabulary of signs.
+*   Support for multiple sign languages.
+*   Recognition of continuous sign language (sentence-level translation).
+*   User accounts or personalized settings.
+*   Mobile application versions (iOS/Android).
+*   Advanced UI features (e.g., history of predictions, customization).
+*   Deployment to cloud platforms or robust production servers.
+*   Integration of facial expression analysis for nuanced meaning.
+*   Offline recognition capabilities.
+*   Finger-spelling recognition (often treated as a separate, specific task).
+
+## 10. Assumptions and Constraints
+
+*   **A1:** User has a functional webcam connected to their computer.
+*   **A2:** User provides necessary browser permissions for webcam access.
+*   **A3:** User performs signs clearly and within the camera's field of view.
+*   **A4:** Lighting conditions are adequate for reliable feature detection by MediaPipe.
+*   **A5:** The system recognizes only the specific, isolated signs it was trained on.
+*   **A6:** Performance is dependent on the user's computer hardware (CPU/GPU).
+*   **A7:** The initial version is intended for local execution and demonstration, not high-concurrency production use.
+*   **C1:** Accuracy is fundamentally limited by the quality and quantity of the training data.
+*   **C2:** Real-time performance depends on hardware and the complexity of the model and feature extraction.
+*   **C3:** MediaPipe (or chosen detection library) must successfully detect hands/pose; failures in detection will lead to failures in recognition.

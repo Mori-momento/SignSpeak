@@ -1,0 +1,10 @@
+Flask
+opencv-python-headless
+mediapipe
+numpy
+transformers
+torch
+# Add torchvision and torchaudio if required by the specific transformers model/processor, often needed.
+torchvision
+torchaudio
+accelerate

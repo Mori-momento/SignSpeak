@@ -1,0 +1,32 @@
+/* Basic styling for the Sign Language Recognition app */
+
+body {
+    font-family: sans-serif;
+    margin: 20px;
+    background-color: #f4f4f4;
+    color: #333;
+}
+
+h1 {
+    text-align: center;
+    color: #0056b3;
+}
+
+p {
+    text-align: center;
+    font-size: 1.1em;
+}
+
+.video-container {
+    display: flex;
+    justify-content: center;
+    margin-top: 20px;
+    border: 1px solid #ccc;
+    background-color: #fff;
+    padding: 10px;
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+}
+
+#video_feed {
+    display: block;
+}

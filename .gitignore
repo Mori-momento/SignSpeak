@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.env
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# VSCode
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data
+dataset/
+dataset_cropped/
+
+# Models
+*.pth
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+*.log
