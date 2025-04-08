@@ -3,13 +3,18 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-*.env
-.venv/
-env/
+*.pdb
+
+# Virtual environments
 venv/
+.venv/
 ENV/
-env.bak/
+env/
+ENV.bak/
 venv.bak/
+
+# Jupyter Notebook
+.ipynb_checkpoints
 
 # VSCode
 .vscode/
@@ -21,12 +26,17 @@ Thumbs.db
 # Data
 dataset/
 dataset_cropped/
-
-# Models
+*.npy
+*.h5
 *.pth
-
-# Jupyter
-.ipynb_checkpoints/
 
 # Logs
 *.log
+
+# Other
+*.swp
+*.swo
+*.bak
+*.tmp
+*.old
+*.orig

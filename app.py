@@ -16,15 +16,38 @@ app = Flask(__name__)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# --- Single-input MobileNetV2 model ---
-model = models.mobilenet_v2(pretrained=False)
-model.classifier[1] = nn.Linear(model.last_channel, 24)
-model = model.to(device)
+# --- Multi-modal model definition ---
+class MultiModalNet(nn.Module):
+    def __init__(self, num_classes=24):
+        super().__init__()
+        self.cnn = models.mobilenet_v2(pretrained=False)
+        self.cnn.classifier = nn.Identity()
+        cnn_out_dim = 1280
+        self.landmark_fc = nn.Sequential(
+            nn.Linear(21*3, 128),
+            nn.ReLU(),
+            nn.Linear(128, 64),
+            nn.ReLU()
+        )
+        self.classifier = nn.Sequential(
+            nn.Linear(cnn_out_dim + 64, 256),
+            nn.ReLU(),
+            nn.Linear(256, num_classes)
+        )
 
+    def forward(self, image, landmarks):
+        img_feat = self.cnn(image)
+        lm_feat = self.landmark_fc(landmarks)
+        combined = torch.cat((img_feat, lm_feat), dim=1)
+        out = self.classifier(combined)
+        return out
+
+# --- Load trained multi-modal model ---
+model = MultiModalNet(num_classes=24).to(device)
 try:
-    model.load_state_dict(torch.load('asl_mobilenetv2_augmented.pth', map_location=device))
+    model.load_state_dict(torch.load('asl_multimodal_cropped.pth', map_location=device))
     model.eval()
-    print("Fine-tuned MobileNetV2 model loaded successfully.")
+    print("Custom multi-modal cropped ASL model loaded successfully.")
 except Exception as e:
     print(f"Error loading ASL model: {e}")
     model = None
@@ -107,7 +130,7 @@ def generate_frames():
                 pil_image = Image.fromarray(cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGB))
                 img_tensor = transform_img(pil_image).unsqueeze(0).to(device)
                 with torch.no_grad():
-                    outputs = model(img_tensor)
+                    outputs = model(img_tensor, landmark_tensor)
                     probs = torch.softmax(outputs, dim=1)
                     pred_idx = torch.argmax(probs, dim=1).item()
                     confidence = probs[0, pred_idx].item()
