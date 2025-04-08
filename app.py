@@ -115,32 +115,34 @@ def generate_frames():
             max_y = min(int(max(y_coords) * h) + 20, h)
             cropped_image = frame[min_y:max_y, min_x:max_x]
 
+
         # Prepare landmarks tensor
         if results.right_hand_landmarks:
             landmark_list = []
             for lm in results.right_hand_landmarks.landmark:
                 landmark_list.extend([lm.x, lm.y, lm.z])
             landmark_tensor = torch.tensor(landmark_list, dtype=torch.float32).unsqueeze(0).to(device)
+
+            # Throttle inference
+            if frame_count % 5 == 0:
+                try:
+                    pil_image = Image.fromarray(cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGB))
+                    img_tensor = transform_img(pil_image).unsqueeze(0).to(device)
+                    with torch.no_grad():
+                        outputs = model(img_tensor, landmark_tensor)
+                        probs = torch.softmax(outputs, dim=1)
+                        pred_idx = torch.argmax(probs, dim=1).item()
+                        confidence = probs[0, pred_idx].item()
+                    # Map index to letter
+                    alphabet = ['A','B','C','D','E','F','G','H','I','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y']
+                    pred_label = alphabet[pred_idx] if pred_idx < len(alphabet) else "?"
+                    last_prediction_text = f"{pred_label} ({confidence:.2f})"
+                except Exception as e:
+                    print(f"Error during prediction: {e}")
+                    last_prediction_text = "Error"
         else:
             landmark_tensor = torch.zeros((1, 21*3), dtype=torch.float32).to(device)
-
-        # Throttle inference
-        if frame_count % 5 == 0:
-            try:
-                pil_image = Image.fromarray(cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGB))
-                img_tensor = transform_img(pil_image).unsqueeze(0).to(device)
-                with torch.no_grad():
-                    outputs = model(img_tensor, landmark_tensor)
-                    probs = torch.softmax(outputs, dim=1)
-                    pred_idx = torch.argmax(probs, dim=1).item()
-                    confidence = probs[0, pred_idx].item()
-                # Map index to letter
-                alphabet = ['A','B','C','D','E','F','G','H','I','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y']
-                pred_label = alphabet[pred_idx] if pred_idx < len(alphabet) else "?"
-                last_prediction_text = f"{pred_label} ({confidence:.2f})"
-            except Exception as e:
-                print(f"Error during prediction: {e}")
-                last_prediction_text = "Error"
+            last_prediction_text = "No hand detected"
 
         # Draw prediction text
         font = cv2.FONT_HERSHEY_SIMPLEX
